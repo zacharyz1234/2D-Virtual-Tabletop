@@ -22,4 +22,17 @@ public class Player {
     public void addCard(Card card) {
         hand.add(card);
     }
+    
+    public void removeCard(Card card)
+    {
+    	hand.remove(card);
+    }
+    
+    public void viewHand()
+    {
+    	for(int i = 0; i < hand.size(); i++)
+    	{
+    		System.out.print(hand);
+    	}
+    }
 }
