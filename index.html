@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2D Virtual Tabletop Sandbox</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    body {
+      background-color: #1b4332;
+      color: #fff;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Top Sandbox Toolbar */
+    header {
+      background: #081c15;
+      padding: 10px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #2d6a4f;
+      z-index: 10000;
+    }
+
+    .toolbar-group {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    button {
+      background: #40916c;
+      color: #fff;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    button:hover { background: #52b788; }
+    button.secondary { background: #2d6a4f; }
+    button.danger { background: #e76f51; }
+
+    /* Freeform 2D Tabletop Canvas */
+    #tabletop {
+      position: relative;
+      flex: 1;
+      width: 100%;
+      background: radial-gradient(circle, #2d6a4f 0%, #1b4332 100%);
+      overflow: hidden;
+    }
+
+    /* Visual Hand Zones (Top & Bottom) */
+    .hand-zone {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 75%;
+      height: 145px;
+      border: 2px dashed rgba(255, 255, 255, 0.3);
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.22);
+      pointer-events: none;
+      display: flex;
+      justify-content: center;
+      padding: 6px;
+    }
+
+    #zone-player2 { top: 12px; }
+    #zone-player1 { bottom: 12px; }
+
+    .zone-label {
+      font-size: 0.8rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    /* Interactive Deck Widget on Table */
+    #deck-pile {
+      position: absolute;
+      left: 40px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 96px;
+      height: 136px;
+      border-radius: 8px;
+      background: repeating-linear-gradient(
+        45deg,
+        #1d3557,
+        #1d3557 10px,
+        #457b9d 10px,
+        #457b9d 20px
+      );
+      border: 3px solid #f1faee;
+      box-shadow: 0 8px 0 #0d1b2a, 0 12px 20px rgba(0,0,0,0.6);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      z-index: 5;
+    }
+
+    #deck-pile:hover { filter: brightness(1.1); }
+    #deck-pile span {
+      background: rgba(0,0,0,0.75);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-weight: bold;
+    }
+
+    /* Draggable Cards */
+    .card {
+      position: absolute;
+      width: 92px;
+      height: 132px;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.45);
+      cursor: grab;
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+    }
+
+    .card:active {
+      cursor: grabbing;
+      box-shadow: 0 12px 24px rgba(0,0,0,0.7);
+    }
+
+    .card img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      pointer-events: none;
+      border-radius: 6px;
+    }
+
+    .card.facedown {
+      background: repeating-linear-gradient(
+        45deg,
+        #1d3557,
+        #1d3557 10px,
+        #457b9d 10px,
+        #457b9d 20px
+      );
+      border: 3px solid #f1faee;
+    }
+
+    .card.facedown img { display: none; }
+
+    /* Pop-Up Modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 20000;
+    }
+
+    .modal-overlay.active { display: flex; }
+
+    .modal-box {
+      background: #1b263b;
+      border: 2px solid #778da9;
+      border-radius: 12px;
+      padding: 20px;
+      width: 320px;
+      text-align: center;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.8);
+    }
+
+    .modal-preview {
+      width: 140px;
+      height: 200px;
+      margin: 12px auto;
+      background: #fff;
+      border-radius: 8px;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .modal-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .modal-actions button.full {
+      grid-column: span 2;
+    }
+
+    .hint {
+      font-size: 0.8rem;
+      color: #95d5b2;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div>
+      <strong>2D Tabletop Sandbox</strong>
+      <div class="hint">Drag cards anywhere | Double-click or Right-click a card for Pop-Up Menu</div>
+    </div>
+    <div class="toolbar-group">
+      <button onclick="spawnCardFromDeck(false)">Draw Face-Up</button>
+      <button class="secondary" onclick="spawnCardFromDeck(true)">Draw Face-Down</button>
+      <button onclick="dealSetup(5)">Quick Deal (5 Each)</button>
+      <button class="secondary" onclick="shuffleDeck()">Shuffle Deck</button>
+      <button class="danger" onclick="resetTable()">Gather All & Reset</button>
+    </div>
+  </header>
+
+  <div id="tabletop">
+    <!-- Player 2 Hand Zone -->
+    <div class="hand-zone" id="zone-player2">
+      <div class="zone-label">Player 2 Hand Zone (Drop cards here)</div>
+    </div>
+
+    <!-- Deck Pile on Left -->
+    <div id="deck-pile" onclick="spawnCardFromDeck(false)" title="Click to draw a card">
+      <span id="deck-count">52 Cards</span>
+    </div>
+
+    <!-- Player 1 Hand Zone -->
+    <div class="hand-zone" id="zone-player1">
+      <div class="zone-label">Player 1 Hand Zone (Drop cards here)</div>
+    </div>
+  </div>
+
+  <!-- Card Interaction Pop-Up -->
+  <div class="modal-overlay" id="card-modal" onclick="closeModal()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <h3 id="modal-title">Card</h3>
+      <small id="modal-subtitle" style="color:#a8dadc;"></small>
+      <div class="modal-preview" id="modal-preview-box">
+        <img id="modal-img" src="" alt="Card">
+      </div>
+      <div class="modal-actions">
+        <button onclick="flipActiveCard()">Flip Card</button>
+        <button onclick="rotateActiveCard()">Rotate 90°</button>
+        <button class="secondary" onclick="moveActiveToZone('player1')">To P1 Hand</button>
+        <button class="secondary" onclick="moveActiveToZone('player2')">To P2 Hand</button>
+        <button class="danger full" onclick="returnActiveToDeck()">Return to Deck</button>
+        <button class="full" style="background:#415a77" onclick="closeModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SUITS = ['HEARTS', 'DIAMONDS', 'SPADES', 'CLUBS'];
+    const FACES = [
+      { name: 'ACE', value: 1, isFace: false, file: 'ace' },
+      { name: 'TWO', value: 2, isFace: false, file: '2' },
+      { name: 'THREE', value: 3, isFace: false, file: '3' },
+      { name: 'FOUR', value: 4, isFace: false, file: '4' },
+      { name: 'FIVE', value: 5, isFace: false, file: '5' },
+      { name: 'SIX', value: 6, isFace: false, file: '6' },
+      { name: 'SEVEN', value: 7, isFace: false, file: '7' },
+      { name: 'EIGHT', value: 8, isFace: false, file: '8' },
+      { name: 'NINE', value: 9, isFace: false, file: '9' },
+      { name: 'TEN', value: 10, isFace: false, file: '10' },
+      { name: 'JACK', value: 11, isFace: true, file: 'jack' },
+      { name: 'QUEEN', value: 12, isFace: true, file: 'queen' },
+      { name: 'KING', value: 13, isFace: true, file: 'king' }
+    ];
+
+    let deck = [];
+    let tableCards = []; // Cards currently out on the 2D table
+    let topZIndex = 10;
+    let activeCardId = null;
+
+    // Dragging state
+    let dragTarget = null;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+
+    function getTexturePath(card) {
+      return `images/Card Face Textures/${card.face.file}_of_${card.suit.toLowerCase()}.png`;
+    }
+
+    function buildDeck() {
+      deck = [];
+      for (const suit of SUITS) {
+        for (const face of FACES) {
+          deck.push({
+            id: `card_${suit}_${face.name}`,
+            suit,
+            face,
+            x: 180,
+            y: 250,
+            rotation: 0,
+            faceDown: false,
+            zIndex: 10
+          });
+        }
+      }
+      shuffleDeck();
+    }
+
+    function shuffleDeck() {
+      for (let i = deck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [deck[i], deck[j]] = [deck[j], deck[i]];
+      }
+      updateDeckUI();
+    }
+
+    function updateDeckUI() {
+      const deckEl = document.getElementById('deck-pile');
+      document.getElementById('deck-count').textContent = `${deck.length} Cards`;
+      deckEl.style.opacity = deck.length === 0 ? '0.3' : '1';
+    }
+
+    // Spawns a card onto the center of the table with slight random scatter
+    function spawnCardFromDeck(faceDown = false, customX = null, customY = null) {
+      if (deck.length === 0) {
+        alert('Deck is empty!');
+        return null;
+      }
+      const card = deck.pop();
+      const tabletop = document.getElementById('tabletop');
+      const rect = tabletop.getBoundingClientRect();
+
+      card.faceDown = faceDown;
+      card.rotation = 0;
+      card.zIndex = ++topZIndex;
+      card.x = customX !== null ? customX : (rect.width / 2 - 46) + (Math.random() * 60 - 30);
+      card.y = customY !== null ? customY : (rect.height / 2 - 66) + (Math.random() * 60 - 30);
+
+      tableCards.push(card);
+      createCardDOM(card);
+      updateDeckUI();
+      return card;
+    }
+
+    // Preset helper: deals N cards into both players' hand zones
+    function dealSetup(count) {
+      const rect = document.getElementById('tabletop').getBoundingClientRect();
+      const startX = rect.width / 2 - (count * 105) / 2;
+
+      for (let i = 0; i < count; i++) {
+        if (deck.length > 0) spawnCardFromDeck(false, startX + i * 105, rect.height - 150);
+        if (deck.length > 0) spawnCardFromDeck(false, startX + i * 105, 20);
+      }
+    }
+
+    function createCardDOM(card) {
+      const el = document.createElement('div');
+      el.className = `card ${card.faceDown ? 'facedown' : ''}`;
+      el.id = card.id;
+      updateCardStyle(el, card);
+
+      const img = document.createElement('img');
+      img.src = getTexturePath(card);
+      img.alt = `${card.face.name} of ${card.suit}`;
+      el.appendChild(img);
+
+      // Mouse Down -> Start Drag
+      el.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return; // Only left click drags
+        dragTarget = card;
+        card.zIndex = ++topZIndex;
+        el.style.zIndex = card.zIndex;
+
+        const elRect = el.getBoundingClientRect();
+        dragOffsetX = e.clientX - elRect.left;
+        dragOffsetY = e.clientY - elRect.top;
+      });
+
+      // Double Click or Right Click -> Open Pop-Up Modal
+      el.addEventListener('dblclick', () => openModal(card.id));
+      el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        openModal(card.id);
+      });
+
+      document.getElementById('tabletop').appendChild(el);
+    }
+
+    function updateCardStyle(el, card) {
+      el.style.left = `${card.x}px`;
+      el.style.top = `${card.y}px`;
+      el.style.zIndex = card.zIndex;
+      el.style.transform = `rotate(${card.rotation}deg)`;
+      el.classList.toggle('facedown', card.faceDown);
+    }
+
+    // Global Mouse Move & Up for Smooth Dragging
+    window.addEventListener('mousemove', (e) => {
+      if (!dragTarget) return;
+      const tableRect = document.getElementById('tabletop').getBoundingClientRect();
+      dragTarget.x = e.clientX - tableRect.left - dragOffsetX;
+      dragTarget.y = e.clientY - tableRect.top - dragOffsetY;
+
+      const el = document.getElementById(dragTarget.id);
+      if (el) updateCardStyle(el, dragTarget);
+    });
+
+    window.addEventListener('mouseup', () => {
+      dragTarget = null;
+    });
+
+    // Pop-Up Modal Functions
+    function openModal(cardId) {
+      const card = tableCards.find(c => c.id === cardId);
+      if (!card) return;
+      activeCardId = cardId;
+
+      document.getElementById('modal-title').textContent =
+        card.faceDown ? 'Face-Down Card' : `${card.face.name} of ${card.suit}`;
+      document.getElementById('modal-subtitle').textContent =
+        card.faceDown ? 'Flip to reveal card details' : `Value: ${card.face.value} | Face Card: ${card.face.isFace}`;
+
+      const img = document.getElementById('modal-img');
+      img.src = getTexturePath(card);
+      img.style.visibility = card.faceDown ? 'hidden' : 'visible';
+
+      document.getElementById('card-modal').classList.add('active');
+    }
+
+    function closeModal() {
+      document.getElementById('card-modal').classList.remove('active');
+      activeCardId = null;
+    }
+
+    function flipActiveCard() {
+      const card = tableCards.find(c => c.id === activeCardId);
+      if (!card) return;
+      card.faceDown = !card.faceDown;
+      updateCardStyle(document.getElementById(card.id), card);
+      openModal(card.id); // Refresh modal preview
+    }
+
+    function rotateActiveCard() {
+      const card = tableCards.find(c => c.id === activeCardId);
+      if (!card) return;
+      card.rotation = (card.rotation + 90) % 360;
+      updateCardStyle(document.getElementById(card.id), card);
+    }
+
+    function moveActiveToZone(player) {
+      const card = tableCards.find(c => c.id === activeCardId);
+      if (!card) return;
+      const rect = document.getElementById('tabletop').getBoundingClientRect();
+      card.x = (rect.width / 2 - 46) + (Math.random() * 220 - 110);
+      card.y = player === 'player1' ? rect.height - 150 : 20;
+      card.zIndex = ++topZIndex;
+      updateCardStyle(document.getElementById(card.id), card);
+      closeModal();
+    }
+
+    function returnActiveToDeck() {
+      const idx = tableCards.findIndex(c => c.id === activeCardId);
+      if (idx === -1) return;
+      const [card] = tableCards.splice(idx, 1);
+      document.getElementById(card.id)?.remove();
+      card.faceDown = false;
+      card.rotation = 0;
+      deck.push(card);
+      updateDeckUI();
+      closeModal();
+    }
+
+    function resetTable() {
+      tableCards.forEach(c => document.getElementById(c.id)?.remove());
+      tableCards = [];
+      buildDeck();
+    }
+
+    // Initialize on load
+    buildDeck();
+  </script>
+</body>
+</html>
